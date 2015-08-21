@@ -7,22 +7,41 @@
 
 /// Coefficients for one fluid
 struct SAFTCoeffs{
+    std::string name; ///< Name of fluid
     double m, ///< number of segments
         sigma_Angstrom, ///< [A] segment diameter
         epsilon_over_k; ///< [K] depth of pair potential divided by Boltzman constant
+    std::string BibTeXKey; ///< The BibTeXKey for the reference for these coefficients
 };
 
 /// Manager class for PCSAFT coefficients
 class PCSAFTLibrary{
     std::map<std::string, SAFTCoeffs> coeffs;
+public:
     PCSAFTLibrary(){
+        insert_normal_fluid("Methane", 1.0000, 3.7039, 150.03, "Gross-IECR-2001");
+        insert_normal_fluid("Ethane", 1.6069, 3.5206, 191.42, "Gross-IECR-2001");
+    }
+    void insert_normal_fluid(const std::string &name, double m, const double sigma_Angstrom, const double epsilon_over_k, const std::string &BibTeXKey){
         SAFTCoeffs coeff;
-        coeff.m = 1.6069;
-        coeff.sigma_Angstrom = 3.5206;
-        coeff.epsilon_over_k = 191.42;
-        coeffs.insert(std::pair<std::string, SAFTCoeffs>("Ethane", coeff));
+        coeff.name = name;
+        coeff.m = m;
+        coeff.sigma_Angstrom = sigma_Angstrom;
+        coeff.epsilon_over_k = epsilon_over_k;
+        coeff.BibTeXKey = BibTeXKey;
+        coeffs.insert(std::pair<std::string, SAFTCoeffs>(name, coeff));
+    }
+    const SAFTCoeffs & get_normal_fluid(const std::string &name){
+        std::map<std::string, SAFTCoeffs>::iterator it = coeffs.find(name);
+        if (it != coeffs.end()){
+            return it->second;
+        }
+        else{
+        }
     }
 };
+
+PCSAFTLibrary library;
 
 /// A class used to evaluate mixtures using PC-SAFT model
 class PCSAFTMixture{
@@ -39,15 +58,18 @@ private:
         m2_epsilon_sigma3_bar, ///< Eqn. A. 12
         m2_epsilon2_sigma3_bar; ///< Eqn. A. 13
 public:
-    PCSAFTMixture(const std::vector<std::string> names, const std::vector<double> mole_fractions) : mole_fractions(mole_fractions) {};
-    PCSAFTMixture() {
-        mole_fractions = std::vector<double>(2, 0.54776246548998087); mole_fractions[1] = 0.45223753451001913;
+    PCSAFTMixture(const std::vector<std::string> names, const std::vector<double> mole_fractions) : mole_fractions(mole_fractions)
+    {
+        m.clear(); sigma_Angstrom.clear(); epsilon_over_k.clear();
+        for (std::vector<std::string>::const_iterator it = names.begin(); it != names.end(); ++it){
+            const SAFTCoeffs & coeff = library.get_normal_fluid(*it);
+            m.push_back(coeff.m);
+            sigma_Angstrom.push_back(coeff.sigma_Angstrom);
+            epsilon_over_k.push_back(coeff.epsilon_over_k);
+        }
     };
     void init(){
-        // Hardcoded ethane for now
-        m = std::vector<double>(2, 1.6069); m[1] = 1.0;
-        sigma_Angstrom = std::vector<double>(2, 3.5206); sigma_Angstrom[1] = 3.70388767;
-        epsilon_over_k = std::vector<double>(2, 191.42); epsilon_over_k[1] = 150.033987;
+        
         k_ij = 0;
 
         mbar = 0;
@@ -171,14 +193,15 @@ public:
         }
         return summer;
     }
-
+    /// Eqn. A.11
+    /// Erratum: should actually be 1/RHS of equation A.11 according to sample
+    /// FORTRAN code
     double C1(double eta){
-        /// Erratum: should actually be 1/RHS of equation according to sample
-        /// FORTRAN code
         return 1.0/(1.0
             + mbar*(8*eta-2*eta*eta)/pow(1-eta, 4)
             + (1-mbar)*(20*eta - 27*eta*eta + 12*pow(eta, 3) - 2*pow(eta, 4))/pow((1 - eta)*(2 - eta), 2));
     }
+    /// Eqn. A.31
     double C2(double eta){
         return -pow(C1(eta), 2)*(
             mbar*(-4*eta*eta+20*eta+8)/pow(1-eta, 5)
@@ -188,7 +211,9 @@ public:
 };
 
 int main(){
-    PCSAFTMixture Ethane;
+    std::vector<double> z(2, 0); z[0] = 0.49; z[1] = 0.51;
+    std::vector<std::string> names(2, "Methane"); names[1] = "Ethane";
+    PCSAFTMixture Ethane(names, z);
     Ethane.init();
-    Ethane.calc(9085.7307274078448, 21.1+273.15);
+    Ethane.calc(13372., 247.01);
 }
