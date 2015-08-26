@@ -79,7 +79,8 @@ public:
             mbar += mole_fractions[i]*m[i];
         }
     }
-    void calc(double rhomolar, double T){
+    double calc_p(double rhomolar, double T){
+        double k_Boltzmann = 1.3806622169047228e-23;
         double PI = 3.141592654;
         std::size_t N = m.size();
         m2_epsilon_sigma3_bar = 0;
@@ -98,7 +99,7 @@ public:
 
         /// Convert from molar density to total number density of molecules in mol/Angstroms^3
         double N_AV = 6.022e23;
-        double rho_A3 = rhomolar*N_AV/10e30;
+        double rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
 
         double summer = 0;
         for (std::size_t i = 0; i < N; ++i){
@@ -108,7 +109,7 @@ public:
 
         /// Cache evaluations of the components of zeta
         zeta.resize(4);
-        for (std::size_t n = 0; n < 4; ++n){           
+        for (std::size_t n = 0; n < 4; ++n){   
             double summer = 0;
             for (std::size_t i = 0; i < N; ++i){
                 // Eqn A.8
@@ -122,13 +123,12 @@ public:
             summer -= mole_fractions[i]*(m[i]-1)/gij_HS(i, i)*rho_A3_dgij_HS_drhoA3(i, i);
         }
         double Z_hc = mbar*Z_hs() + summer;
-        double ZZZ_hs = Z_hs();
         
         double Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
                         -PI*rho_A3*mbar*(C1(eta)*d_etaI2_deta(eta, mbar) + C2(eta)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
-        double Z = 1 + Z_hc + Z_disp;
-        double p = rhomolar*8.3144621*T*Z/1e5;
-        int rr = 0;
+        double Z = 1 + Z_hc + Z_disp; //[-]
+        double p = Z*k_Boltzmann*T*rho_A3*1e30; //[Pa]
+        return p;
     }
     /// Eqn. A.18
     double a_i(std::size_t i, double mbar){
@@ -164,7 +164,7 @@ public:
     /// Eqn. A.16
     double I1(double eta, double mbar){
         double summer = 0;
-        for (std::size_t i = 0; i < 6; ++i){
+        for (std::size_t i = 0; i < 7; ++i){
             summer += a_i(i, mbar)*pow(eta, i);
         }
         return summer;
@@ -172,7 +172,7 @@ public:
     /// Eqn. A.29
     double d_etaI1_deta(double eta, double mbar){
         double summer = 0;
-        for (std::size_t j = 0; j < 6; ++j){
+        for (std::size_t j = 0; j < 7; ++j){
             summer += a_i(j, mbar)*(j+1)*pow(eta, j);
         }
         return summer;
@@ -180,7 +180,7 @@ public:
     /// Eqn. A.17
     double I2(double eta, double mbar){
         double summer = 0;
-        for (std::size_t i = 0; i < 6; ++i){
+        for (std::size_t i = 0; i < 7; ++i){
             summer += b_i(i, mbar)*pow(eta, i);
         }
         return summer;
@@ -188,7 +188,7 @@ public:
     /// Eqn. A.30
     double d_etaI2_deta(double eta, double mbar){
         double summer = 0;
-        for (std::size_t j = 0; j < 6; ++j){
+        for (std::size_t j = 0; j < 7; ++j){
             summer += b_i(j, mbar)*(j+1)*pow(eta, j);
         }
         return summer;
@@ -211,9 +211,9 @@ public:
 };
 
 int main(){
-    std::vector<double> z(2, 0); z[0] = 0.49; z[1] = 0.51;
+    std::vector<double> z(2, 0); z[0] = 0.4; z[1] = 0.6;
     std::vector<std::string> names(2, "Methane"); names[1] = "Ethane";
     PCSAFTMixture Ethane(names, z);
     Ethane.init();
-    Ethane.calc(13372., 247.01);
+    double p = Ethane.calc_p(540.60262, 300);
 }
