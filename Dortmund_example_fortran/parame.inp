@@ -1,0 +1,29 @@
+21.1
+20.
+1.d0
+3.70388767d0
+150.033987d0
+1.6069d0
+3.5206d0
+191.42d0
+0.
+0.999d0  ,  0.001d0
+0.4d0    ,  1.d-8
+
+
+
+THIS FILE IS ORGANIZED IN THE FOLLOWING WAY:
+(component 1 is the low boiling component)
+
+temperature [�C]
+pressure    [bar]
+segment number   of comp. 1   (m1)
+segment diameter of comp. 1   (sigma1)
+energy parameter of comp. 1   (epsilon1)
+segment number   of comp. 2   (m2)
+segment diameter of comp. 2   (sigma2)
+energy parameter of comp. 2   (epsilon2)
+kij : binary interaction correction
+starting value for mole fraction of comp. 1 in first and second phase
+starting value for the density of the first and second phase
+
