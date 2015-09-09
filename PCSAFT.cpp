@@ -4,6 +4,11 @@
 #include <string>
 #include <cmath>
 #include "math.h"
+#include <iostream>
+
+const static double k_Boltzmann = 1.3806622169047228e-23;
+const static double PI = 3.141592654;
+const static double N_AV = 6.022e23;
 
 /// Coefficients for one fluid
 struct SAFTCoeffs{
@@ -52,13 +57,14 @@ private:
                         d, ///< temperature-dependent segment diameter
                         zeta,
                         mole_fractions;
+    std::vector<std::string> names;
 
     double mbar, ///< mean segment number in the system
         k_ij, ///< binary interaction parameter
         m2_epsilon_sigma3_bar, ///< Eqn. A. 12
         m2_epsilon2_sigma3_bar; ///< Eqn. A. 13
 public:
-    PCSAFTMixture(const std::vector<std::string> names, const std::vector<double> mole_fractions) : mole_fractions(mole_fractions)
+    PCSAFTMixture(const std::vector<std::string> names, const std::vector<double> mole_fractions) : mole_fractions(mole_fractions), names(names)
     {
         m.clear(); sigma_Angstrom.clear(); epsilon_over_k.clear();
         for (std::vector<std::string>::const_iterator it = names.begin(); it != names.end(); ++it){
@@ -79,9 +85,8 @@ public:
             mbar += mole_fractions[i]*m[i];
         }
     }
-    double calc_p(double rhomolar, double T){
-        double k_Boltzmann = 1.3806622169047228e-23;
-        double PI = 3.141592654;
+    double calc_Z(double rhomolar, double T){
+
         std::size_t N = m.size();
         m2_epsilon_sigma3_bar = 0;
         m2_epsilon2_sigma3_bar = 0;
@@ -98,7 +103,6 @@ public:
         }
 
         /// Convert from molar density to total number density of molecules in mol/Angstroms^3
-        double N_AV = 6.022e23;
         double rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
 
         double summer = 0;
@@ -127,7 +131,14 @@ public:
         double Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
                         -PI*rho_A3*mbar*(C1(eta)*d_etaI2_deta(eta, mbar) + C2(eta)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
         double Z = 1 + Z_hc + Z_disp; //[-]
-        double p = Z*k_Boltzmann*T*rho_A3*1e30; //[Pa]
+        return Z;
+    }
+    double calc_p(double rhomolar, double T){
+        
+        /// Convert from molar density to total number density of molecules in mol/Angstroms^3
+        double rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
+        
+        double p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
         return p;
     }
     /// Eqn. A.18
@@ -208,12 +219,34 @@ public:
             +(1-mbar)*(2*eta*eta*eta+12*eta*eta-48*eta+40)/pow((1-eta)*(2-eta), 3)
         );
     }
+    double B12(double rhomolar, double T){
+        // Calculate B for the mixture
+        double Bm = (this->calc_Z(rhomolar, T)-1)/rhomolar;
+        // Construct for the pure components
+        PCSAFTMixture c1(std::vector<std::string>(1, names[0]), std::vector<double>(1,1));
+        PCSAFTMixture c2(std::vector<std::string>(1, names[1]), std::vector<double>(1,1));
+        c1.init(); c2.init();
+        // Calculate B virials for both pure components
+        double Z1 = c1.calc_Z(rhomolar, T);
+        double B1 = (Z1-1)/rhomolar;
+        double Z2 = c2.calc_Z(rhomolar, T);
+        double B2 = (Z2-1)/rhomolar;
+        // Calculate B12
+        double x1 = mole_fractions[0];
+        double x2 = mole_fractions[1];
+        double B12 = (Bm - x1*B1 - x2*B2)/(0.5*x1*x2);
+        return B12;
+    }
 };
 
 int main(){
-    std::vector<double> z(2, 0); z[0] = 0.4; z[1] = 0.6;
     std::vector<std::string> names(2, "Methane"); names[1] = "Ethane";
-    PCSAFTMixture Ethane(names, z);
-    Ethane.init();
-    double p = Ethane.calc_p(540.60262, 300);
+    std::vector<double> z(2, 0);
+    for (double z0 = 0.001; z0 < 1; z0 += 0.01){
+         z[0] = z0; z[1] = 1-z0;
+        PCSAFTMixture mix(names, z);
+        mix.init();
+        double B12 = mix.B12(1e-12, 300);
+        std::cout << z0 <<  " " << B12 << std::endl;
+    }
 }
