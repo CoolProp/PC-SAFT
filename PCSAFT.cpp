@@ -6,9 +6,9 @@
 #include "math.h"
 #include <iostream>
 
-const static double k_Boltzmann = 1.3806622169047228e-23;
-const static double PI = 3.141592654;
-const static double N_AV = 6.022e23;
+const static double k_Boltzmann = 1.38064852e-23;
+const static double PI = 3.14159265359;
+const static double N_AV = 6.022140857e23;
 
 /// Coefficients for one fluid
 struct SAFTCoeffs{
@@ -103,7 +103,7 @@ public:
         }
 
         /// Convert from molar density to total number density of molecules in mol/Angstroms^3
-        double rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
+        double rho_A3 = rhomolar*N_AV/1e30; //[molecules (not moles)/A^3]
 
         double summer = 0;
         for (std::size_t i = 0; i < N; ++i){
@@ -136,7 +136,7 @@ public:
     double calc_p(double rhomolar, double T){
         
         /// Convert from molar density to total number density of molecules in mol/Angstroms^3
-        double rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
+        double rho_A3 = rhomolar*N_AV/1e30; //[molecules (not moles)/A^3]
         
         double p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
         return p;
