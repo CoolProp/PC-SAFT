@@ -1,6 +1,7 @@
 
 #include <map>
 #include <vector>
+#include <valarray>
 #include <string>
 #include <cmath>
 #include "math.h"
@@ -146,7 +147,7 @@ PCSAFTLibrary library;
 /// A class used to evaluate mixtures using PC-SAFT model
 class PCSAFTMixture{
 private:
-    std::vector<double> m, ///< number of segments
+    std::valarray<double> m, ///< number of segments
                         sigma_Angstrom, ///< 
                         epsilon_over_k, ///< depth of pair potential divided by Boltzman constant
                         d, ///< temperature-dependent segment diameter
@@ -200,7 +201,7 @@ public:
 
         Rho summer = 0.0;
         for (std::size_t i = 0; i < N; ++i){
-            summer += mole_fractions[i]*m[i]*pow(d[i], 3);
+            summer += ;
         }
         auto eta = PI*rho_A3/6.0*summer;
 
@@ -260,4 +261,7 @@ int main(){
     //do_calc<double>();
     do_calc<std::complex<double> >();
     //auto x = ChebTools::ChebyshevExpansion::from_powxn(1, 0, 4000);
+    std::valarray<double> c = {1,2,3,4,5};
+    auto o = std::pow(c, 2.0);
+    std::cout << o[2];
 }
