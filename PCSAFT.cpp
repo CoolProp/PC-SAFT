@@ -7,6 +7,8 @@
 #include <complex>
 #include <iostream>
 
+#include "ChebTools/ChebTools.h"
+
 const static double k_Boltzmann = 1.3806622169047228e-23;
 const static double PI = 3.141592654;
 const static double N_AV = 6.022e23;
@@ -246,4 +248,5 @@ void do_calc(){
 int main(){
     do_calc<double>();
     do_calc<std::complex<double> >();
+    auto x = ChebTools::ChebyshevExpansion::from_powxn(1, 0, 4000);
 }
