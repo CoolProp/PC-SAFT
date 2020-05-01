@@ -221,24 +221,6 @@ public:
             +(1.0-mbar)*(2.0*eta*eta*eta+12.0*eta*eta-48.0*eta+40.0)/pow((1.0-eta)*(2.0-eta), 3)
         );
     }
-    auto B12(TYPE rhomolar, TYPE T){
-        // Calculate B for the mixture
-        auto Bm = (this->calc_Z(rhomolar, T)-1)/rhomolar;
-        // Construct for the pure components
-        PCSAFTMixture c1(std::vector<std::string>(1, names[0]), std::vector<double>(1,1));
-        PCSAFTMixture c2(std::vector<std::string>(1, names[1]), std::vector<double>(1,1));
-        c1.init(); c2.init();
-        // Calculate B virials for both pure components
-        auto Z1 = c1.calc_Z(rhomolar, T);
-        auto B1 = (Z1-1)/rhomolar;
-        auto Z2 = c2.calc_Z(rhomolar, T);
-        auto B2 = (Z2-1)/rhomolar;
-        // Calculate B12
-        auto x1 = mole_fractions[0];
-        auto x2 = mole_fractions[1];
-        auto B12 = (Bm - x1*B1 - x2*B2)/(0.5*x1*x2);
-        return B12;
-    }
 };
 
 template <typename TYPE>
@@ -250,7 +232,15 @@ void do_calc(){
         PCSAFTMixture<TYPE> mix(names, z);
         mix.init();
         TYPE rhomolar = 3000.0, T = 200.0;
+        double h = 1e-100;
+        if constexpr (std::is_same<TYPE, std::complex<double>>::value){
+            T += TYPE(0.0, 1e-100);
+        }
         std::cout << z0 <<  " " << mix.calc_p(rhomolar, T) << std::endl;
+        auto val = mix.calc_p(rhomolar, T);
+        if constexpr (std::is_same<TYPE, std::complex<double>>::value){
+            std::cout << "dZdT: " << std::imag(val)/h << std::endl;
+        }
     }
 }
 int main(){
