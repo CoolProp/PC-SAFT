@@ -40,8 +40,8 @@ public:
         coeff.BibTeXKey = BibTeXKey;
         coeffs.insert(std::pair<std::string, SAFTCoeffs>(name, coeff));
     }
-    const SAFTCoeffs & get_normal_fluid(const std::string &name){
-        std::map<std::string, SAFTCoeffs>::iterator it = coeffs.find(name);
+    const auto & get_normal_fluid(const std::string &name){
+        auto it = coeffs.find(name);
         if (it != coeffs.end()){
             return it->second;
         }
@@ -84,30 +84,30 @@ auto b_i(std::size_t i, TYPE mbar){
     return b_0[i]+(mbar-1.0)/mbar*b_1[i] + (mbar-1.0)/mbar*(mbar-2.0)/mbar*b_2[i];
 }
 /// Residual contribution from hard-sphere (Eqn. A.26)
-template<typename TYPE>
-TYPE Z_hs(const std::vector<TYPE> &zeta){
+template<typename VecType>
+auto Z_hs(const VecType &zeta){
     return zeta[3]/(1.0-zeta[3]) 
            + 3.0*zeta[1]*zeta[2]/(zeta[0]*pow(1.0-zeta[3], 2)) 
            + (3.0*pow(zeta[2], 3) - zeta[3]*pow(zeta[2], 3))/(zeta[0]*pow(1.0-zeta[3], 3));
 }
 /// Derivative term from Eqn. A.27
-template<typename TYPE, typename dTYPE>
-TYPE rho_A3_dgij_HS_drhoA3(const std::vector<TYPE> &zeta, const std::vector<dTYPE> &d, 
+template<typename zVecType, typename dVecType>
+auto rho_A3_dgij_HS_drhoA3(const zVecType &zeta, const dVecType &d, 
                            std::size_t i, std::size_t j){
     return zeta[3]/pow(1.0-zeta[3], 2)
            + d[i]*d[j]/(d[i]+d[j])*(3.0*zeta[2]/pow(1.0-zeta[3], 2) + 6.0*zeta[2]*zeta[3]/pow(1.0-zeta[3], 3))
            + pow(d[i]*d[j]/(d[i]+d[j]), 2)*(4.0*pow(zeta[2], 2)/pow(1.0-zeta[3], 3) + 6.0*pow(zeta[2], 2)*zeta[3]/pow(1.0-zeta[3], 4));
 }
 /// Term from Eqn. A.7
-template<typename TYPE, typename dTYPE>
-auto gij_HS(const std::vector<TYPE> &zeta, const std::vector<dTYPE> &d, 
+template<typename zVecType, typename dVecType>
+auto gij_HS(const zVecType &zeta, const dVecType &d, 
             std::size_t i, std::size_t j){
     return 1.0/(1.0-zeta[3]) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(1.0-zeta[3], 2)
         + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(1.0-zeta[3], 3);
 }
 /// Eqn. A.16
-template <typename Eta, typename Mbar>
-auto I1(Eta eta, Mbar mbar){
+template <typename Eta>
+auto I1(Eta eta, double mbar){
     Eta summer = 0.0;
     for (std::size_t i = 0; i < 7; ++i){
         summer += a_i(i, mbar)*pow(eta, i);
@@ -115,8 +115,8 @@ auto I1(Eta eta, Mbar mbar){
     return summer;
 }
 /// Eqn. A.29
-template <typename Eta, typename Mbar>
-auto d_etaI1_deta(Eta eta, Mbar mbar){
+template <typename Eta>
+auto d_etaI1_deta(Eta eta, double mbar){
     Eta summer = 0.0;
     for (std::size_t j = 0; j < 7; ++j){
         summer += a_i(j, mbar)*(j+1.0)*pow(eta, j);
@@ -124,8 +124,8 @@ auto d_etaI1_deta(Eta eta, Mbar mbar){
     return summer;
 }
 /// Eqn. A.17
-template <typename Eta, typename Mbar>
-auto I2(Eta eta, Mbar mbar){
+template <typename Eta>
+auto I2(Eta eta, double mbar){
     Eta summer = 0.0;
     for (std::size_t i = 0; i < 7; ++i){
         summer += b_i(i, mbar)*pow(eta, i);
@@ -133,15 +133,14 @@ auto I2(Eta eta, Mbar mbar){
     return summer;
 }
 /// Eqn. A.30
-template <typename Eta, typename Mbar>
-auto d_etaI2_deta(Eta eta, Mbar mbar){
+template <typename Eta>
+auto d_etaI2_deta(Eta eta, double mbar){
     Eta summer = 0.0;
     for (std::size_t j = 0; j < 7; ++j){
         summer += b_i(j, mbar)*(j+1.0)*pow(eta, j);
     }
     return summer;
 }
-
 PCSAFTLibrary library;
 
 /// A class used to evaluate mixtures using PC-SAFT model
@@ -150,7 +149,6 @@ private:
     std::valarray<double> m, ///< number of segments
                         sigma_Angstrom, ///< 
                         epsilon_over_k, ///< depth of pair potential divided by Boltzman constant
-                        d, ///< temperature-dependent segment diameter
                         mole_fractions;
     std::vector<std::string> names;
 
@@ -159,32 +157,39 @@ private:
         m2_epsilon_sigma3_bar, ///< Eqn. A. 12
         m2_epsilon2_sigma3_bar; ///< Eqn. A. 13
 public:
-    PCSAFTMixture(const std::vector<std::string> names, const std::vector<double> mole_fractions) : mole_fractions(mole_fractions), names(names)
+    PCSAFTMixture(const std::vector<std::string> names, 
+                  const std::valarray<double> &mole_fractions) 
+        :mole_fractions(mole_fractions), names(names)
     {
-        m.clear(); sigma_Angstrom.clear(); epsilon_over_k.clear();
-        for (std::vector<std::string>::const_iterator it = names.begin(); it != names.end(); ++it){
-            const SAFTCoeffs & coeff = library.get_normal_fluid(*it);
-            m.push_back(coeff.m);
-            sigma_Angstrom.push_back(coeff.sigma_Angstrom);
-            epsilon_over_k.push_back(coeff.epsilon_over_k);
+        m.resize(names.size()); 
+        sigma_Angstrom.resize(names.size()); 
+        epsilon_over_k.resize(names.size());
+        auto i = 0;
+        for (auto name : names){
+            const SAFTCoeffs & coeff = library.get_normal_fluid(name);
+            m[i] = coeff.m;
+            sigma_Angstrom[i] = coeff.sigma_Angstrom;
+            epsilon_over_k[i] = coeff.epsilon_over_k;
+            i++;
         }
         k_ij = 0;
+        init();
     };
-    void init(){
-        mbar = 0;
-        std::size_t N = m.size();
-        for (std::size_t i = 0; i < N; ++i){
-            // Eqn A.5
-            mbar += mole_fractions[i]*m[i];
+    void print_info(){
+        for (auto i = 0; i < m.size(); ++i){
+            std::cout << i <<  " " << m[i] << " " << sigma_Angstrom[i] << " " << epsilon_over_k[i] << " " << mole_fractions[i] << std::endl;
         }
     }
-    template<typename Rho, typename TTYPE>
-    auto calc_Z(Rho rhomolar, TTYPE T){
+    void init(){
+        mbar = (mole_fractions*m).sum();
+    }
+    template<typename RhoType, typename TTYPE>
+    auto calc_Z(RhoType rhomolar, TTYPE T){
 
         std::size_t N = m.size();
         m2_epsilon_sigma3_bar = 0;
         m2_epsilon2_sigma3_bar = 0;
-        d.resize(N);
+        std::valarray<double> d(N);
         for (std::size_t i = 0; i < N; ++i){
             d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T));
             for (std::size_t j = 0; j < N; ++j){
@@ -196,32 +201,22 @@ public:
             }   
         }
 
-        /// Convert from molar density to total number density of molecules in mol/Angstroms^3
-        auto rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
+        /// Convert from molar density to total number density of molecules in molecules/Angstroms^3
+        auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
+        auto eta = (PI/6.0)*rho_A3*(mole_fractions*m*std::pow(d, 3.0)).sum();
 
-        Rho summer = 0.0;
-        for (std::size_t i = 0; i < N; ++i){
-            summer += ;
-        }
-        auto eta = PI*rho_A3/6.0*summer;
-
-        /// Cache evaluations of the components of zeta
-        std::vector<Rho> zeta(4, 0.0);
-        for (std::size_t n = 0; n < 4; ++n){   
-            Rho summer = 0.0;
-            for (std::size_t i = 0; i < N; ++i){
-                // Eqn A.8
-                summer += mole_fractions[i]*m[i]*pow(d[i], static_cast<int>(n));
-            }
-            zeta[n] = PI*rho_A3/6.0*summer;
+        /// Evaluate the components of zeta
+        std::valarray<RhoType> zeta(4, 0.0);
+        for (std::size_t n = 0; n < 4; ++n){
+            // Eqn A.8
+            zeta[n] = (PI/6.0)*rho_A3*(mole_fractions*m*std::pow(d, static_cast<double>(n))).sum();
         }
 
-        summer = 0.0;
+        RhoType summer = 0.0;
         for (std::size_t i = 0; i < N; ++i){
             summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
         }
         auto Z_hc = mbar*Z_hs(zeta) + summer;
-        
         auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
                         -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
         auto Z = 1.0 + Z_hc + Z_disp; //[-]
@@ -230,7 +225,7 @@ public:
     template<typename Rho, typename TTYPE>
     auto calc_p(Rho rhomolar, TTYPE T){
         /// Convert from molar density to total number density of molecules in mol/Angstroms^3
-        auto rho_A3 = rhomolar*N_AV/10e30; //[molecules (not moles)/A^3]
+        auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
         auto p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
         return p;
     }
@@ -238,12 +233,11 @@ public:
 
 template <typename TYPE>
 void do_calc(){
-    std::vector<std::string> names(2, "Methane"); names[1] = "Ethane";
-    std::vector<double> z(2, 0);
-    for (double z0 = 0.001; z0 < 1.0; z0 += 0.01){
-        z[0] = z0; z[1] = 1.0-z0;
+    std::vector<std::string> names = {"Methane","Ethane"};
+    for (double z0 = 0.1; z0 < 1.0; z0 += 101){
+        std::valarray<double> z = {z0, 1.0-z0};
         PCSAFTMixture mix(names, z);
-        mix.init();
+        //mix.print_info();
         double T = 200;
         TYPE rhomolar = 3000.0;
         double h = 1e-100;
@@ -253,15 +247,16 @@ void do_calc(){
         std::cout << z0 <<  " " << mix.calc_p(rhomolar, T) << std::endl;
         auto val = mix.calc_p(rhomolar, T);
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
-            std::cout << "dZdT: " << std::imag(val)/h << std::endl;
+            std::cout << "dZdrho: " << std::imag(val)/h << std::endl;
         }
+        auto p = mix.calc_p(rhomolar, T);
+
+        //auto rhomolar_ = ChebTools::ChebyshevExpansion::from_powxn(1, 0, 4000);
+        //auto pcheb = mix.calc_p(rhomolar_, T);
+        //std::cout << (pcheb-p).real_roots(true);
     }
 }
 int main(){
-    //do_calc<double>();
+    do_calc<double>();
     do_calc<std::complex<double> >();
-    //auto x = ChebTools::ChebyshevExpansion::from_powxn(1, 0, 4000);
-    std::valarray<double> c = {1,2,3,4,5};
-    auto o = std::pow(c, 2.0);
-    std::cout << o[2];
 }
