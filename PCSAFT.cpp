@@ -92,9 +92,10 @@ auto b_i(std::size_t i, TYPE mbar){
 /// Residual contribution from hard-sphere (Eqn. A.26)
 template<typename VecType>
 auto Z_hs(const VecType &zeta){
-    return zeta[3]/(1.0-zeta[3]) 
-           + 3.0*zeta[1]*zeta[2]/(zeta[0]*pow(1.0-zeta[3], 2)) 
-           + (3.0*pow(zeta[2], 3) - zeta[3]*pow(zeta[2], 3))/(zeta[0]*pow(1.0-zeta[3], 3));
+    auto Upsilon = 1.0-zeta[3];
+    return zeta[3]/Upsilon
+           + 3.0*zeta[1]*zeta[2]/(zeta[0]*pow(Upsilon, 2))
+           + (3.0*pow(zeta[2], 3) - zeta[3]*pow(zeta[2], 3))/(zeta[0]*pow(Upsilon, 3));
 }
 /// Derivative term from Eqn. A.27
 template<typename zVecType, typename dVecType>
@@ -260,23 +261,20 @@ public:
 
         RhoType summer = 0.0*rhomolar;
         for (std::size_t i = 0; i < N; ++i){
-            // if constexpr (std::is_same<RhoType, ChebTools::ChebyshevExpansion>::value){
-            //     auto y = rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
-            //     auto y2 = gij_HS(zeta, d, i, i);
-            //     std::cout << i << "; size: " << summer.coef().size() << " " << y.coef().size() << " " << y2.coef().size() << std::endl;
-            // }
             summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
         }
+        auto Z_hs_ = Z_hs(zeta);
+        auto Z_hc = mbar*Z_hs_ + summer;
         if constexpr (std::is_same<RhoType, ChebTools::ChebyshevExpansion>::value){
-            std::cout << summer.y_recurrence(3000.0) << std::endl;
+            std::cout << (1/zeta[0]).y_Clenshaw(3000.0) << std::endl;
+            std::cout << "zeta[0]: " << zeta[0].coef() << std::endl;
         }
         else{
-            std::cout << summer << std::endl;
+            std::cout << (1/zeta[0]) << std::endl;
         }
         
-        auto Z_hc = mbar*Z_hs(zeta) + summer;
         auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
-                        -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
+                      -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
         auto Z = 1.0 + Z_hc + Z_disp; //[-]
         return Z;
     }
@@ -310,10 +308,11 @@ void do_calc(){
         }
 
         if constexpr (std::is_same<TYPE, double>::value){
-            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(10, [](double x){return x;}, 0.001, 10000);
+            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(11, [](double x){return x;}, 0.001, 10000);
+            // std::cout << "||" << rhomolar_.coef() << "||" << std::endl;
             auto pcheb = mix.calc_p(rhomolar_, T);
             auto diff = (pcheb-val);
-            std::cout << diff.y_recurrence(rhomolar) << std::endl;
+            //std::cout << diff.y_Clenshaw(rhomolar) << std::endl;
             // std::cout << diff.get_node_function_values() << std::endl;
             // std::cout << diff.coef().size() << std::endl;
             // std::cout << diff.coef() << std::endl;
