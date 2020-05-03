@@ -1,7 +1,6 @@
 
 #include <map>
 #include <vector>
-#include <valarray>
 #include <string>
 #include <cmath>
 #include "math.h"
@@ -142,11 +141,48 @@ auto d_etaI2_deta(Eta eta, double mbar){
     return summer;
 }
 PCSAFTLibrary library;
+/**
+Sum up two array-like objects that can each have different container types and value types
+*/
+template<typename VecType1, typename VecType2>
+auto sumproduct(const VecType1 &v1, const VecType2 &v2){
+    using ResultType = decltype(v1[0]*v2[0]);
+    ResultType summer = 0.0;
+    for (auto i = 0; i < v1.size(); ++i){
+        summer += v1[i]*v2[i];
+    }
+    return summer;
+}
+
+/**
+Sum up three array-like objects that can each have different container types and value types
+*/
+template<typename VecType1, typename VecType2, typename VecType3>
+auto sumproduct(const VecType1 &v1, const VecType2 &v2, const VecType3 &v3){
+    using ResultType = decltype(v1[0]*v2[0]*v3[0]);
+    ResultType summer = 0.0;
+    for (auto i = 0; i < v1.size(); ++i){
+        summer += v1[i]*v2[i]*v3[i];
+    }
+    return summer;
+}
+
+/**
+Sum up three array-like objects that can each have different container types and value types
+*/
+template<typename VecType1, typename NType>
+auto powvec(const VecType1 &v1, NType n){
+    auto o = v1;
+    for (auto i = 0; i < v1.size(); ++i){
+        o[i] = pow(v1[i], n);
+    }
+    return o;
+}
 
 /// A class used to evaluate mixtures using PC-SAFT model
 class PCSAFTMixture{
 private:
-    std::valarray<double> m, ///< number of segments
+    std::vector<double> m, ///< number of segments
                         sigma_Angstrom, ///< 
                         epsilon_over_k, ///< depth of pair potential divided by Boltzman constant
                         mole_fractions;
@@ -158,7 +194,7 @@ private:
         m2_epsilon2_sigma3_bar; ///< Eqn. A. 13
 public:
     PCSAFTMixture(const std::vector<std::string> names, 
-                  const std::valarray<double> &mole_fractions) 
+                  const std::vector<double> &mole_fractions) 
         :mole_fractions(mole_fractions), names(names)
     {
         m.resize(names.size()); 
@@ -173,15 +209,12 @@ public:
             i++;
         }
         k_ij = 0;
-        init();
+        mbar = sumproduct(mole_fractions, m);
     };
     void print_info(){
         for (auto i = 0; i < m.size(); ++i){
             std::cout << i <<  " " << m[i] << " " << sigma_Angstrom[i] << " " << epsilon_over_k[i] << " " << mole_fractions[i] << std::endl;
         }
-    }
-    void init(){
-        mbar = (mole_fractions*m).sum();
     }
     template<typename RhoType, typename TTYPE>
     auto calc_Z(RhoType rhomolar, TTYPE T){
@@ -189,7 +222,7 @@ public:
         std::size_t N = m.size();
         m2_epsilon_sigma3_bar = 0;
         m2_epsilon2_sigma3_bar = 0;
-        std::valarray<double> d(N);
+        std::vector<decltype(T)> d(N);
         for (std::size_t i = 0; i < N; ++i){
             d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T));
             for (std::size_t j = 0; j < N; ++j){
@@ -201,15 +234,15 @@ public:
             }   
         }
 
-        /// Convert from molar density to total number density of molecules in molecules/Angstroms^3
+        /// Convert from molar density to number density in molecules/Angstrom^3
         auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
-        auto eta = (PI/6.0)*rho_A3*(mole_fractions*m*std::pow(d, 3.0)).sum();
+        auto eta = (PI/6.0)*rho_A3*sumproduct(mole_fractions,m,powvec(d,3));
 
         /// Evaluate the components of zeta
-        std::valarray<RhoType> zeta(4, 0.0);
+        std::vector<RhoType> zeta = {0,0,0,0};
         for (std::size_t n = 0; n < 4; ++n){
             // Eqn A.8
-            zeta[n] = (PI/6.0)*rho_A3*(mole_fractions*m*std::pow(d, static_cast<double>(n))).sum();
+            zeta[n] = (PI/6.0)*rho_A3*sumproduct(mole_fractions,m,powvec(d,static_cast<double>(n)));
         }
 
         RhoType summer = 0.0;
@@ -224,7 +257,7 @@ public:
     }
     template<typename Rho, typename TTYPE>
     auto calc_p(Rho rhomolar, TTYPE T){
-        /// Convert from molar density to total number density of molecules in mol/Angstroms^3
+        /// Convert from molar density to number density of molecules in molecules/Angstroms^3
         auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
         auto p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
         return p;
@@ -235,7 +268,7 @@ template <typename TYPE>
 void do_calc(){
     std::vector<std::string> names = {"Methane","Ethane"};
     for (double z0 = 0.1; z0 < 1.0; z0 += 101){
-        std::valarray<double> z = {z0, 1.0-z0};
+        std::vector<double> z = {z0, 1.0-z0};
         PCSAFTMixture mix(names, z);
         //mix.print_info();
         double T = 200;
