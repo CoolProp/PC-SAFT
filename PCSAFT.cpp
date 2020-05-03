@@ -93,16 +93,16 @@ auto Z_hs(const VecType &zeta){
 template<typename zVecType, typename dVecType>
 auto rho_A3_dgij_HS_drhoA3(const zVecType &zeta, const dVecType &d, 
                            std::size_t i, std::size_t j){
-    return zeta[3]/pow(1.0-zeta[3], 2)
-           + d[i]*d[j]/(d[i]+d[j])*(3.0*zeta[2]/pow(1.0-zeta[3], 2) + 6.0*zeta[2]*zeta[3]/pow(1.0-zeta[3], 3))
-           + pow(d[i]*d[j]/(d[i]+d[j]), 2)*(4.0*pow(zeta[2], 2)/pow(1.0-zeta[3], 3) + 6.0*pow(zeta[2], 2)*zeta[3]/pow(1.0-zeta[3], 4));
+    return zeta[3]/pow(-zeta[3]+1.0, 2)
+           + d[i]*d[j]/(d[i]+d[j])*(3.0*zeta[2]/pow(-zeta[3]+1.0, 2) + 6.0*zeta[2]*zeta[3]/pow(-zeta[3]+1.0, 3))
+           + pow(d[i]*d[j]/(d[i]+d[j]), 2)*(4.0*pow(zeta[2], 2)/pow(-zeta[3]+1.0, 3) + 6.0*pow(zeta[2], 2)*zeta[3]/pow(-zeta[3]+1.0, 4));
 }
 /// Term from Eqn. A.7
 template<typename zVecType, typename dVecType>
 auto gij_HS(const zVecType &zeta, const dVecType &d, 
             std::size_t i, std::size_t j){
-    return 1.0/(1.0-zeta[3]) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(1.0-zeta[3], 2)
-        + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(1.0-zeta[3], 3);
+    return 1.0/(-zeta[3]+1.0) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(-zeta[3]+1.0, 2)
+        + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(-zeta[3]+1.0, 3);
 }
 /// Eqn. A.16
 template <typename Eta>
@@ -239,13 +239,15 @@ public:
         auto eta = (PI/6.0)*rho_A3*sumproduct(mole_fractions,m,powvec(d,3));
 
         /// Evaluate the components of zeta
-        std::vector<RhoType> zeta = {0,0,0,0};
+        std::vector<RhoType> zeta;
         for (std::size_t n = 0; n < 4; ++n){
             // Eqn A.8
-            zeta[n] = (PI/6.0)*rho_A3*sumproduct(mole_fractions,m,powvec(d,static_cast<double>(n)));
+            zeta.push_back(
+                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(d,static_cast<double>(n)))
+            );
         }
 
-        RhoType summer = 0.0;
+        RhoType summer = 0.0*rhomolar;
         for (std::size_t i = 0; i < N; ++i){
             summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
         }
