@@ -9,6 +9,17 @@
 
 #include "ChebTools/ChebTools.h"
 
+/// Raise a CheyshevExpansion to a power
+auto pow(const ChebTools::ChebyshevExpansion &ce, int n){
+    std::function<Eigen::ArrayXd(const Eigen::ArrayXd &)> f = [n](const Eigen::ArrayXd& y) {return y.pow(n); };
+    return ce.apply(f);
+}
+/// Raise a CheyshevExpansion to a power
+auto pow(const ChebTools::ChebyshevExpansion &ce, double n){
+    std::function<Eigen::ArrayXd(const Eigen::ArrayXd &)> f = [n](const Eigen::ArrayXd& y) {return y.pow(n); };
+    return ce.apply(f);
+}
+
 const static double k_Boltzmann = 1.3806622169047228e-23;
 const static double PI = 3.141592654;
 const static double N_AV = 6.022e23;
@@ -93,16 +104,18 @@ auto Z_hs(const VecType &zeta){
 template<typename zVecType, typename dVecType>
 auto rho_A3_dgij_HS_drhoA3(const zVecType &zeta, const dVecType &d, 
                            std::size_t i, std::size_t j){
-    return zeta[3]/pow(-zeta[3]+1.0, 2)
-           + d[i]*d[j]/(d[i]+d[j])*(3.0*zeta[2]/pow(-zeta[3]+1.0, 2) + 6.0*zeta[2]*zeta[3]/pow(-zeta[3]+1.0, 3))
-           + pow(d[i]*d[j]/(d[i]+d[j]), 2)*(4.0*pow(zeta[2], 2)/pow(-zeta[3]+1.0, 3) + 6.0*pow(zeta[2], 2)*zeta[3]/pow(-zeta[3]+1.0, 4));
+    auto Upsilon = 1.0-zeta[3];
+    return zeta[3]/pow(Upsilon, 2)
+           + d[i]*d[j]/(d[i]+d[j])*(3.0*zeta[2]/pow(Upsilon, 2) + 6.0*zeta[2]*zeta[3]/pow(Upsilon, 3))
+           + pow(d[i]*d[j]/(d[i]+d[j]), 2)*(4.0*pow(zeta[2], 2)/pow(Upsilon, 3) + 6.0*pow(zeta[2], 2)*zeta[3]/pow(Upsilon, 4));
 }
 /// Term from Eqn. A.7
 template<typename zVecType, typename dVecType>
 auto gij_HS(const zVecType &zeta, const dVecType &d, 
             std::size_t i, std::size_t j){
-    return 1.0/(-zeta[3]+1.0) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(-zeta[3]+1.0, 2)
-        + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(-zeta[3]+1.0, 3);
+    auto Upsilon = 1.0-zeta[3];
+    return 1.0/(Upsilon) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(Upsilon, 2)
+        + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(Upsilon, 3);
 }
 /// Eqn. A.16
 template <typename Eta>
@@ -116,27 +129,27 @@ auto I1(Eta eta, double mbar){
 /// Eqn. A.29
 template <typename Eta>
 auto d_etaI1_deta(Eta eta, double mbar){
-    Eta summer = 0.0;
+    Eta summer = 0.0*eta;
     for (std::size_t j = 0; j < 7; ++j){
-        summer += a_i(j, mbar)*(j+1.0)*pow(eta, j);
+        summer += a_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
     }
     return summer;
 }
 /// Eqn. A.17
 template <typename Eta>
 auto I2(Eta eta, double mbar){
-    Eta summer = 0.0;
+    Eta summer = 0.0*eta;
     for (std::size_t i = 0; i < 7; ++i){
-        summer += b_i(i, mbar)*pow(eta, i);
+        summer += b_i(i, mbar)*pow(eta, static_cast<int>(i));
     }
     return summer;
 }
 /// Eqn. A.30
 template <typename Eta>
 auto d_etaI2_deta(Eta eta, double mbar){
-    Eta summer = 0.0;
+    Eta summer = 0.0*eta;
     for (std::size_t j = 0; j < 7; ++j){
-        summer += b_i(j, mbar)*(j+1.0)*pow(eta, j);
+        summer += b_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
     }
     return summer;
 }
@@ -219,6 +232,8 @@ public:
     template<typename RhoType, typename TTYPE>
     auto calc_Z(RhoType rhomolar, TTYPE T){
 
+        using std::pow;
+
         std::size_t N = m.size();
         m2_epsilon_sigma3_bar = 0;
         m2_epsilon2_sigma3_bar = 0;
@@ -243,14 +258,26 @@ public:
         for (std::size_t n = 0; n < 4; ++n){
             // Eqn A.8
             zeta.push_back(
-                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(d,static_cast<double>(n)))
+                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(d, static_cast<double>(n)))
             );
         }
 
         RhoType summer = 0.0*rhomolar;
         for (std::size_t i = 0; i < N; ++i){
+            // if constexpr (std::is_same<RhoType, ChebTools::ChebyshevExpansion>::value){
+            //     auto y = rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
+            //     auto y2 = gij_HS(zeta, d, i, i);
+            //     std::cout << i << "; size: " << summer.coef().size() << " " << y.coef().size() << " " << y2.coef().size() << std::endl;
+            // }
             summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
         }
+        if constexpr (std::is_same<RhoType, ChebTools::ChebyshevExpansion>::value){
+            std::cout << summer.y_recurrence(3000.0) << std::endl;
+        }
+        else{
+            std::cout << summer << std::endl;
+        }
+        
         auto Z_hc = mbar*Z_hs(zeta) + summer;
         auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
                         -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
@@ -279,19 +306,30 @@ void do_calc(){
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
             rhomolar += TYPE(0.0, 1e-100);
         }
-        std::cout << z0 <<  " " << mix.calc_p(rhomolar, T) << std::endl;
         auto val = mix.calc_p(rhomolar, T);
+        std::cout << z0 <<  " " << val << std::endl;
+        
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
             std::cout << "dZdrho: " << std::imag(val)/h << std::endl;
         }
-        auto p = mix.calc_p(rhomolar, T);
 
-        //auto rhomolar_ = ChebTools::ChebyshevExpansion::from_powxn(1, 0, 4000);
-        //auto pcheb = mix.calc_p(rhomolar_, T);
-        //std::cout << (pcheb-p).real_roots(true);
+        if constexpr (std::is_same<TYPE, double>::value){
+            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(10, [](double x){return x;}, 0.001, 10000);
+            auto pcheb = mix.calc_p(rhomolar_, T);
+            auto diff = (pcheb-val);
+            std::cout << diff.y_recurrence(rhomolar) << std::endl;
+            // std::cout << diff.get_node_function_values() << std::endl;
+            // std::cout << diff.coef().size() << std::endl;
+            // std::cout << diff.coef() << std::endl;
+            // std::cout << diff.companion_matrix(diff.coef());
+            // auto roots = (pcheb-p).real_roots(true);
+            // for (auto root: roots){
+            //     std::cout << root << std::endl;
+            // }
+        }
     }
 }
 int main(){
     do_calc<double>();
-    do_calc<std::complex<double> >();
+    //do_calc<std::complex<double> >();
 }
