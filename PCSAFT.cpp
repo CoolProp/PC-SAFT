@@ -10,12 +10,8 @@
 #include "ChebTools/ChebTools.h"
 
 /// Raise a CheyshevExpansion to a power
-auto pow(const ChebTools::ChebyshevExpansion &ce, int n){
-    std::function<Eigen::ArrayXd(const Eigen::ArrayXd &)> f = [n](const Eigen::ArrayXd& y) {return y.pow(n); };
-    return ce.apply(f);
-}
-/// Raise a CheyshevExpansion to a power
-auto pow(const ChebTools::ChebyshevExpansion &ce, double n){
+template <typename NType>
+auto pow(const ChebTools::ChebyshevExpansion &ce, NType n){
     std::function<Eigen::ArrayXd(const Eigen::ArrayXd &)> f = [n](const Eigen::ArrayXd& y) {return y.pow(n); };
     return ce.apply(f);
 }
