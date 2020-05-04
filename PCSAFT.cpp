@@ -245,7 +245,7 @@ public:
         m2_epsilon2_sigma3_bar = 0;
         std::vector<decltype(T)> d(N);
         for (std::size_t i = 0; i < N; ++i){
-            d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T));
+            d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T)); // [A]
             for (std::size_t j = 0; j < N; ++j){
                 // Eqn A.5
                 auto sigma_ij = 0.5*sigma_Angstrom[i] + 0.5*sigma_Angstrom[j];
@@ -274,14 +274,6 @@ public:
         }
         auto Z_hs_ = Z_hs(zeta);
         auto Z_hc = mbar*Z_hs_ + summer;
-        if constexpr (std::is_same<RhoType, ChebTools::ChebyshevExpansion>::value){
-            std::cout << (1/zeta[0]).y_Clenshaw(3000.0) << std::endl;
-            std::cout << "zeta[0]: " << zeta[0].coef() << std::endl;
-        }
-        else{
-            std::cout << (1/zeta[0]) << std::endl;
-        }
-        
         auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
                       -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
         auto Z = 1.0 + Z_hc + Z_disp; //[-]
@@ -304,7 +296,10 @@ void do_calc(){
         PCSAFTMixture mix(names, z);
         //mix.print_info();
         double T = 200;
-        TYPE rhomolar = 3000.0;
+        auto max_rhoN = mix.max_rhoN(T, z)*1e30; // [molecule/m^3]
+        auto max_rhomolar = max_rhoN/N_AV;
+        std::cout << "max rhomolar: " << max_rhomolar << std::endl; 
+        TYPE rhomolar = 3700.0;
         double h = 1e-100;
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
             rhomolar += TYPE(0.0, 1e-100);
@@ -317,19 +312,14 @@ void do_calc(){
         }
 
         if constexpr (std::is_same<TYPE, double>::value){
-            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(11, [](double x){return x;}, 0.001, 10000);
-            // std::cout << "||" << rhomolar_.coef() << "||" << std::endl;
+            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(10, [](double x){return x;}, 2000, max_rhomolar*0.99);
             auto pcheb = mix.calc_p(rhomolar_, T);
             auto diff = (pcheb-val);
-            //std::cout << diff.y_Clenshaw(rhomolar) << std::endl;
-            // std::cout << diff.get_node_function_values() << std::endl;
-            // std::cout << diff.coef().size() << std::endl;
-            // std::cout << diff.coef() << std::endl;
-            // std::cout << diff.companion_matrix(diff.coef());
-            // auto roots = (pcheb-p).real_roots(true);
-            // for (auto root: roots){
-            //     std::cout << root << std::endl;
-            // }
+            auto roots = (pcheb-val).real_roots(true);
+            std::cout << "roots:" << std::endl;
+            for (auto root: roots){
+                 std::cout << root << std::endl;
+            }
         }
     }
 }
