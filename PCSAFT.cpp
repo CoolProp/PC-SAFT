@@ -226,6 +226,15 @@ public:
             std::cout << i <<  " " << m[i] << " " << sigma_Angstrom[i] << " " << epsilon_over_k[i] << " " << mole_fractions[i] << std::endl;
         }
     }
+    template<typename VecType1>
+    auto max_rhoN(double T, const VecType1 &mole_fractions){
+    	auto N = mole_fractions.size();
+    	std::vector<decltype(T)> d(N);
+        for (auto i = 0; i < N; ++i){
+            d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T));
+        }
+        return 6*0.74/PI/sumproduct(mole_fractions,m,powvec(d,3));
+    }
     template<typename RhoType, typename TTYPE>
     auto calc_Z(RhoType rhomolar, TTYPE T){
 
