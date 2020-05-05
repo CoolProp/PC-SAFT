@@ -1,6 +1,7 @@
 
 #include <map>
 #include <vector>
+#include <chrono>
 #include <string>
 #include <cmath>
 #include "math.h"
@@ -312,10 +313,16 @@ void do_calc(){
         }
 
         if constexpr (std::is_same<TYPE, double>::value){
+            auto startTime = std::chrono::high_resolution_clock::now();
             auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(10, [](double x){return x;}, 2000, max_rhomolar*0.99);
             auto pcheb = mix.calc_p(rhomolar_, T);
             auto diff = (pcheb-val);
+            auto interTime = std::chrono::high_resolution_clock::now();
             auto roots = (pcheb-val).real_roots(true);
+            auto endTime = std::chrono::high_resolution_clock::now();
+    		double elap = std::chrono::duration<double>(endTime - startTime).count();
+    		std::cout << "elapsed (total):" << elap << std::endl;
+    		std::cout << "elapsed (build):" << std::chrono::duration<double>(interTime - startTime).count() << std::endl;
             std::cout << "roots:" << std::endl;
             for (auto root: roots){
                  std::cout << root << std::endl;
