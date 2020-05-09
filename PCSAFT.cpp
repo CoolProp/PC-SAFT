@@ -61,14 +61,14 @@ public:
 /// Erratum: should actually be 1/RHS of equation A.11 according to sample
 /// FORTRAN code
 template <typename Eta, typename Mbar>
-auto C1(Eta eta, Mbar mbar){
+auto C1(const Eta &eta, Mbar mbar){
     return 1.0/(1.0
         + mbar*(8.0*eta-2.0*eta*eta)/pow(1.0-eta, 4)
         + (1.0-mbar)*(20.0*eta - 27.0*eta*eta + 12.0*pow(eta, 3) - 2.0*pow(eta, 4))/pow((1.0 - eta)*(2.0 - eta), 2));
 }
 /// Eqn. A.31
 template <typename Eta, typename Mbar>
-auto C2(Eta eta, Mbar mbar){
+auto C2(const Eta &eta, Mbar mbar){
     return -pow(C1(eta, mbar), 2)*(
         mbar*(-4.0*eta*eta+20.0*eta+8.0)/pow(1.0-eta, 5)
         +(1.0-mbar)*(2.0*eta*eta*eta+12.0*eta*eta-48.0*eta+40.0)/pow((1.0-eta)*(2.0-eta), 3)
@@ -117,7 +117,7 @@ auto gij_HS(const zVecType &zeta, const dVecType &d,
 }
 /// Eqn. A.16
 template <typename Eta>
-auto I1(Eta eta, double mbar){
+auto I1(const Eta &eta, double mbar){
     Eta summer = 0.0;
     for (std::size_t i = 0; i < 7; ++i){
         summer += a_i(i, mbar)*pow(eta, i);
@@ -126,7 +126,7 @@ auto I1(Eta eta, double mbar){
 }
 /// Eqn. A.29
 template <typename Eta>
-auto d_etaI1_deta(Eta eta, double mbar){
+auto d_etaI1_deta(const Eta &eta, double mbar){
     Eta summer = 0.0*eta;
     for (std::size_t j = 0; j < 7; ++j){
         summer += a_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
@@ -135,7 +135,7 @@ auto d_etaI1_deta(Eta eta, double mbar){
 }
 /// Eqn. A.17
 template <typename Eta>
-auto I2(Eta eta, double mbar){
+auto I2(const Eta &eta, double mbar){
     Eta summer = 0.0*eta;
     for (std::size_t i = 0; i < 7; ++i){
         summer += b_i(i, mbar)*pow(eta, static_cast<int>(i));
@@ -144,7 +144,7 @@ auto I2(Eta eta, double mbar){
 }
 /// Eqn. A.30
 template <typename Eta>
-auto d_etaI2_deta(Eta eta, double mbar){
+auto d_etaI2_deta(const Eta &eta, double mbar){
     Eta summer = 0.0*eta;
     for (std::size_t j = 0; j < 7; ++j){
         summer += b_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
