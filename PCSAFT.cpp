@@ -237,7 +237,7 @@ public:
         return 6*0.74/PI/sumproduct(mole_fractions,m,powvec(d,3));
     }
     template<typename RhoType, typename TTYPE>
-    auto calc_Z(RhoType rhomolar, TTYPE T){
+    auto calc_Z(const RhoType &rhomolar, TTYPE T){
 
         using std::pow;
 
@@ -281,7 +281,7 @@ public:
         return Z;
     }
     template<typename Rho, typename TTYPE>
-    auto calc_p(Rho rhomolar, TTYPE T){
+    auto calc_p(const Rho &rhomolar, TTYPE T){
         /// Convert from molar density to number density of molecules in molecules/Angstroms^3
         auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
         auto p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
