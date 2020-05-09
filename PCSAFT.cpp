@@ -313,16 +313,27 @@ void do_calc(){
         }
 
         if constexpr (std::is_same<TYPE, double>::value){
+            {
+                auto startTime = std::chrono::high_resolution_clock::now();
+                auto N = 1000;
+                auto rhomolar = 3800.0;
+                double pcheb = 0;
+                for (auto i = 0; i < N; ++i) {
+                    pcheb += mix.calc_p(rhomolar, T);
+                }
+                auto endTime = std::chrono::high_resolution_clock::now();
+                double elap = std::chrono::duration<double>(endTime - startTime).count();
+                std::cout << "elapsed: " << elap/N*1e6 << " us/call" << std::endl;
+            }
+
             auto startTime = std::chrono::high_resolution_clock::now();
-            auto rhomolar_ = ChebTools::ChebyshevExpansion::factory(10, [](double x){return x;}, 2000, max_rhomolar*0.99);
-            auto pcheb = mix.calc_p(rhomolar_, T);
-            auto diff = (pcheb-val);
+            auto pcheb = ChebTools::ChebyshevExpansion::factory(7, [&mix, T](double x) {return mix.calc_p(x, T); }, 2000, max_rhomolar * 0.99);
             auto interTime = std::chrono::high_resolution_clock::now();
-            auto roots = (pcheb-val).real_roots(true);
+            auto roots = (pcheb - val).real_roots(true);
             auto endTime = std::chrono::high_resolution_clock::now();
     		double elap = std::chrono::duration<double>(endTime - startTime).count();
-    		std::cout << "elapsed (total):" << elap << std::endl;
-    		std::cout << "elapsed (build):" << std::chrono::duration<double>(interTime - startTime).count() << std::endl;
+            std::cout << "elapsed (build):" << std::chrono::duration<double>(interTime - startTime).count()*1e6 << " us" << std::endl; 
+            std::cout << "elapsed (total):" << elap << std::endl;
             std::cout << "roots:" << std::endl;
             for (auto root: roots){
                  std::cout << root << std::endl;
