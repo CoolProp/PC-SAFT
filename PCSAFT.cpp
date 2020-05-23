@@ -1,4 +1,3 @@
-
 #include <map>
 #include <vector>
 #include <chrono>
@@ -17,9 +16,9 @@ auto pow(const ChebTools::ChebyshevExpansion &ce, NType n){
     return ce.apply(f);
 }
 
-const static double k_Boltzmann = 1.3806622169047228e-23;
+const static double k_Boltzmann = 1.380649e-23;
+const static double N_AV = 8.314462618/k_Boltzmann; 
 const static double PI = 3.141592654;
-const static double N_AV = 6.022e23;
 
 /// Coefficients for one fluid
 struct SAFTCoeffs{
@@ -190,23 +189,28 @@ auto powvec(const VecType1 &v1, NType n){
     return o;
 }
 
+/// Parameters for model evaluation
+class SAFTCalc {
+public:
+    // Just temperature dependent things
+    std::vector<double> d;
+
+    // These things also have composition dependence
+    double mbar,
+           m2_epsilon_sigma3_bar, ///< Eq. A. 12
+           m2_epsilon2_sigma3_bar; ///< Eq. A. 13
+};
+
 /// A class used to evaluate mixtures using PC-SAFT model
 class PCSAFTMixture{
 private:
     std::vector<double> m, ///< number of segments
-                        sigma_Angstrom, ///< 
-                        epsilon_over_k, ///< depth of pair potential divided by Boltzman constant
-                        mole_fractions;
+        sigma_Angstrom, ///< 
+        epsilon_over_k; ///< depth of pair potential divided by Boltzman constant
     std::vector<std::string> names;
-
-    double mbar, ///< mean segment number in the system
-        k_ij, ///< binary interaction parameter
-        m2_epsilon_sigma3_bar, ///< Eqn. A. 12
-        m2_epsilon2_sigma3_bar; ///< Eqn. A. 13
+    double k_ij; ///< binary interaction parameter
 public:
-    PCSAFTMixture(const std::vector<std::string> names, 
-                  const std::vector<double> &mole_fractions) 
-        :mole_fractions(mole_fractions), names(names)
+    PCSAFTMixture(const std::vector<std::string> names) : names(names)
     {
         m.resize(names.size()); 
         sigma_Angstrom.resize(names.size()); 
@@ -220,11 +224,11 @@ public:
             i++;
         }
         k_ij = 0;
-        mbar = sumproduct(mole_fractions, m);
     };
     void print_info(){
+        std::cout << "i m sigma / A e/k / K \n  ++++++++++++++" << std::endl;
         for (auto i = 0; i < m.size(); ++i){
-            std::cout << i <<  " " << m[i] << " " << sigma_Angstrom[i] << " " << epsilon_over_k[i] << " " << mole_fractions[i] << std::endl;
+            std::cout << i <<  " " << m[i] << " " << sigma_Angstrom[i] << " " << epsilon_over_k[i] << std::endl;
         }
     }
     template<typename VecType1>
@@ -236,76 +240,179 @@ public:
         }
         return 6*0.74/PI/sumproduct(mole_fractions,m,powvec(d,3));
     }
-    template<typename RhoType, typename TTYPE>
-    auto calc_Z(const RhoType &rhomolar, TTYPE T){
+    template<typename RhoType, typename TTYPE, typename VecType>
+    auto calc_Z(const RhoType &rhomolar, TTYPE T, const VecType &mole_fractions) const{
 
         using std::pow;
-
         std::size_t N = m.size();
-        m2_epsilon_sigma3_bar = 0;
-        m2_epsilon2_sigma3_bar = 0;
-        std::vector<decltype(T)> d(N);
+
+        SAFTCalc c;
+        c.d.resize(N);
+        c.m2_epsilon_sigma3_bar = 0;
+        c.m2_epsilon2_sigma3_bar = 0;
         for (std::size_t i = 0; i < N; ++i){
-            d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T)); // [A]
+            c.d[i] = sigma_Angstrom[i]*(1.0-0.12*exp(-3.0*epsilon_over_k[i]/T)); // [A]
             for (std::size_t j = 0; j < N; ++j){
-                // Eqn A.5
+                // Eq. A.5
                 auto sigma_ij = 0.5*sigma_Angstrom[i] + 0.5*sigma_Angstrom[j];
                 auto eij_over_k = sqrt(epsilon_over_k[i]*epsilon_over_k[j])*(1.0-k_ij);
-                m2_epsilon_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*eij_over_k/T*pow(sigma_ij, 3);
-                m2_epsilon2_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*pow(eij_over_k/T, 2)*pow(sigma_ij, 3);
+                c.m2_epsilon_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*eij_over_k/T*pow(sigma_ij, 3);
+                c.m2_epsilon2_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*pow(eij_over_k/T, 2)*pow(sigma_ij, 3);
             }   
         }
+        c.mbar = sumproduct(mole_fractions, m);
 
         /// Convert from molar density to number density in molecules/Angstrom^3
         auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
-        auto eta = (PI/6.0)*rho_A3*sumproduct(mole_fractions,m,powvec(d,3));
+        /// Packing fraction
+        auto eta = (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(c.d, 3));
 
         /// Evaluate the components of zeta
         std::vector<RhoType> zeta;
         for (std::size_t n = 0; n < 4; ++n){
             // Eqn A.8
             zeta.push_back(
-                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(d, static_cast<double>(n)))
+                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(c.d, static_cast<double>(n)))
             );
         }
 
         RhoType summer = 0.0*rhomolar;
         for (std::size_t i = 0; i < N; ++i){
-            summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, d, i, i);
+            summer -= mole_fractions[i]*(m[i]-1.0)/gij_HS(zeta, c.d, i, i)*rho_A3_dgij_HS_drhoA3(zeta, c.d, i, i);
         }
         auto Z_hs_ = Z_hs(zeta);
-        auto Z_hc = mbar*Z_hs_ + summer;
-        auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, mbar)*m2_epsilon_sigma3_bar
-                      -PI*rho_A3*mbar*(C1(eta,mbar)*d_etaI2_deta(eta, mbar) + C2(eta,mbar)*eta*I2(eta, mbar))*m2_epsilon2_sigma3_bar;
+        auto Z_hc = c.mbar*Z_hs_ + summer;
+        auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, c.mbar)*c.m2_epsilon_sigma3_bar
+                      -PI*rho_A3*c.mbar*(C1(eta,c.mbar)*d_etaI2_deta(eta, c.mbar) + C2(eta,c.mbar)*eta*I2(eta, c.mbar))*c.m2_epsilon2_sigma3_bar;
         auto Z = 1.0 + Z_hc + Z_disp; //[-]
         return Z;
     }
-    template<typename Rho, typename TTYPE>
-    auto calc_p(const Rho &rhomolar, TTYPE T){
-        /// Convert from molar density to number density of molecules in molecules/Angstroms^3
-        auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
-        auto p = calc_Z(rhomolar, T)*k_Boltzmann*T*rho_A3*1e30; //[Pa]
+    template<typename Rho, typename TTYPE, typename VecType>
+    auto calc_p(const Rho &rhomolar, TTYPE T, const VecType& mole_fractions) const{
+        /// Convert from molar density to number density
+        auto p = calc_Z(rhomolar, T, mole_fractions)*k_Boltzmann*T*rhomolar*N_AV; //[Pa]
         return p;
+    }
+};
+
+class ChebyshevSAFT {
+private:
+    PCSAFTMixture& mix;
+    std::vector<ChebTools::ChebyshevExpansion> expansions, 
+                                               derivatives, //< dpdv|T
+                                               integrals;
+    double m_T = 0;
+public:
+    ChebyshevSAFT(PCSAFTMixture& mix) : mix(mix) {}; 
+    template<typename VecType>
+    void make_pv_expansions(double T, const VecType& mole_fractions, double vmolarmin, double vmolarmax, int Ndegree, int Ndivisions) {
+        auto factor = pow(vmolarmax / vmolarmin, 1.0/(Ndivisions-1.0));
+        for (auto idivision = 0; idivision < Ndivisions-1; ++idivision) {
+            auto xmin = vmolarmin * pow(factor, idivision), xmax = xmin*factor;
+            expansions.emplace_back(
+                ChebTools::ChebyshevExpansion::factory(Ndegree, 
+                    [this, T, &mole_fractions](double v) {return this->mix.calc_p(1/v, T, mole_fractions);}, 
+                    xmin, xmax)
+            );
+        }
+        for (auto& expansion : expansions) {
+            derivatives.emplace_back(expansion.deriv(1));
+            integrals.emplace_back(expansion.integrate(1));
+            std::cout << expansion.coef().head(3).cwiseAbs().mean() << "/" << expansion.coef().tail(3).cwiseAbs().mean() << std::endl;
+        }
+        m_T = T;
+    }
+    auto get_pv_roots(double p) {
+        std::vector<double> out;
+        std::size_t iexpansion = 0;
+        for (auto &expan : expansions) {
+            auto roots = (expan-p).real_roots(true);
+            for (auto& root : roots) {
+                if (derivatives[iexpansion].y_Clenshaw(root) < 0) {
+                    out.push_back(root);
+                }
+            }
+            iexpansion++;
+        }
+        return out;
+    }
+    auto get_extrema() {
+        std::vector<double> roots, values;
+        std::size_t iexpansion = 0;
+        for (auto& deriv : derivatives) {
+            auto rhos = deriv.real_roots(true);
+            for (auto& rho : rhos) {
+                auto val = expansions[iexpansion].y_Clenshaw(rho);
+                roots.push_back(rho); values.push_back(val);
+            }
+            iexpansion++;
+        }
+        return std::make_tuple(roots, values);
+    }
+    auto get_Maxwell_condition(double v1, double v2) {
+        double output = 0.0;
+        
+        // Find left and right intersections
+        std::size_t iexpansion = 0, ileft=0, iright=0;
+        for (auto& deriv : derivatives) {
+            if (v1 >= deriv.xmin() && v1 <= deriv.xmax()) {
+                ileft = iexpansion;
+            }
+            if (v2 >= deriv.xmin() && v2 <= deriv.xmax()) {
+                iright = iexpansion;
+            }
+            iexpansion++;
+        }
+        // Add contribution from the volume root val to right edge of expansion
+        auto& il = integrals[ileft];
+        output += il.y_Clenshaw(il.xmax()) - il.y_Clenshaw(v1);
+        // Add all integrals until...
+        for (auto iex = ileft + 1; iex < iright; ++iex) {
+            auto& i = integrals[iex];
+            output += i.y_Clenshaw(i.xmax()) - i.y_Clenshaw(i.xmin());
+        }
+        // Add left edge to val
+        auto& ir = integrals[iright];
+        output += ir.y_Clenshaw(v2) - ir.y_Clenshaw(ir.xmin());
+        return output;
+    }
+    auto get_psat() {
+        auto [vroots, vals] = get_extrema();
+        auto pmax = *std::max_element(vals.begin(), vals.end());
+        if (vals.size() == 2) {
+            for (auto pval = 2040600.6290362066; pval > 0.5e6; pval /= 1.01) {
+                auto volumeroots = get_pv_roots(pval);
+                if (volumeroots.size() == 2) {
+                    auto rho0 = 1/volumeroots[0], rho1 = 1/volumeroots[1];
+                    auto pdeltaV = (volumeroots[1] - volumeroots[0])*pval; // must be positive
+                    auto maxwell = get_Maxwell_condition(volumeroots[0], volumeroots[1]) - pdeltaV;
+                    std::cout << pval << " :p,maxwell: " << maxwell << std::endl;
+                }
+            }
+        }
+        else {
+            throw std::invalid_argument("");
+        }
     }
 };
 
 template <typename TYPE>
 void do_calc(){
-    std::vector<std::string> names = {"Methane","Ethane"};
+    std::vector<std::string> names = {"Methane"};
     for (double z0 = 0.1; z0 < 1.0; z0 += 101){
-        std::vector<double> z = {z0, 1.0-z0};
-        PCSAFTMixture mix(names, z);
-        //mix.print_info();
-        double T = 200;
+        std::vector<double> z = {1.0};
+        PCSAFTMixture mix(names);
+        mix.print_info();
+        double T = 150;
         auto max_rhoN = mix.max_rhoN(T, z)*1e30; // [molecule/m^3]
         auto max_rhomolar = max_rhoN/N_AV;
         std::cout << "max rhomolar: " << max_rhomolar << std::endl; 
-        TYPE rhomolar = 3700.0;
+        TYPE rhomolar = 25591.48146033746;
         double h = 1e-100;
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
             rhomolar += TYPE(0.0, 1e-100);
         }
-        auto val = mix.calc_p(rhomolar, T);
+        auto val = mix.calc_p(rhomolar, T, z);
         std::cout << z0 <<  " " << val << std::endl;
         
         if constexpr (std::is_same<TYPE, std::complex<double>>::value){
@@ -319,25 +426,37 @@ void do_calc(){
                 auto rhomolar = 3800.0;
                 double pcheb = 0;
                 for (auto i = 0; i < N; ++i) {
-                    pcheb += mix.calc_p(rhomolar, T);
+                    pcheb += mix.calc_p(rhomolar, T, z);
                 }
                 auto endTime = std::chrono::high_resolution_clock::now();
                 double elap = std::chrono::duration<double>(endTime - startTime).count();
                 std::cout << "elapsed: " << elap/N*1e6 << " us/call" << std::endl;
             }
 
-            auto startTime = std::chrono::high_resolution_clock::now();
-            auto pcheb = ChebTools::ChebyshevExpansion::factory(7, [&mix, T](double x) {return mix.calc_p(x, T); }, 2000, max_rhomolar * 0.99);
+            /*auto startTime = std::chrono::high_resolution_clock::now();
+            auto pcheb = ChebTools::ChebyshevExpansion::factory(10, [&mix, T, &z](double x) {return mix.calc_p(x, T, z); }, 2000, max_rhomolar * 0.99);
             auto interTime = std::chrono::high_resolution_clock::now();
             auto roots = (pcheb - val).real_roots(true);
             auto endTime = std::chrono::high_resolution_clock::now();
     		double elap = std::chrono::duration<double>(endTime - startTime).count();
-            std::cout << "elapsed (build):" << std::chrono::duration<double>(interTime - startTime).count()*1e6 << " us" << std::endl; 
-            std::cout << "elapsed (total):" << elap << std::endl;
+            std::cout << "elapsed (build): " << std::chrono::duration<double>(interTime - startTime).count()*1e6 << " us" << std::endl; 
+            std::cout << "elapsed (total): " << elap*1e6 << " us" << std::endl;
             std::cout << "roots:" << std::endl;
             for (auto root: roots){
                  std::cout << root << std::endl;
+            }*/
+
+            auto tic = std::chrono::high_resolution_clock::now();
+            double rootsum = 0.0;
+            for (auto i = 0; i < 10; ++i) {
+                ChebyshevSAFT chebSAFT(mix);
+                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 100);
+                chebSAFT.get_psat();
             }
+            std::cout << rootsum /10 << std::endl;
+            auto toc = std::chrono::high_resolution_clock::now();
+            double elapp = std::chrono::duration<double>(toc - tic).count()/10.0;
+            std::cout << "elapsed (total): " << elapp * 1e6 << " us" << std::endl;
         }
     }
 }
