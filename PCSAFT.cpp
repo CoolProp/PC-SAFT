@@ -258,7 +258,7 @@ public:
                 auto eij_over_k = sqrt(epsilon_over_k[i]*epsilon_over_k[j])*(1.0-k_ij);
                 c.m2_epsilon_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*eij_over_k/T*pow(sigma_ij, 3);
                 c.m2_epsilon2_sigma3_bar += mole_fractions[i]*mole_fractions[j]*m[i]*m[j]*pow(eij_over_k/T, 2)*pow(sigma_ij, 3);
-            }   
+            }
         }
         c.mbar = sumproduct(mole_fractions, m);
 
@@ -298,12 +298,14 @@ public:
 class ChebyshevSAFT {
 private:
     PCSAFTMixture& mix;
-    std::vector<ChebTools::ChebyshevExpansion> expansions, 
-                                               derivatives, //< dpdv|T
-                                               integrals;
+    std::vector<ChebTools::ChebyshevExpansion> expansions, //< p(v)
+                                               derivatives, //< \f$ dpdv|T \f$
+                                               integrals; //< \f$\int p dv \f$
     double m_T = 0;
 public:
     ChebyshevSAFT(PCSAFTMixture& mix) : mix(mix) {}; 
+    auto T() { return m_T; }
+
     template<typename VecType>
     void make_pv_expansions(double T, const VecType& mole_fractions, double vmolarmin, double vmolarmax, int Ndegree, int Ndivisions) {
         auto factor = pow(vmolarmax / vmolarmin, 1.0/(Ndivisions-1.0));
@@ -318,7 +320,6 @@ public:
         for (auto& expansion : expansions) {
             derivatives.emplace_back(expansion.deriv(1));
             integrals.emplace_back(expansion.integrate(1));
-            std::cout << expansion.coef().head(3).cwiseAbs().mean() << "/" << expansion.coef().tail(3).cwiseAbs().mean() << std::endl;
         }
         m_T = T;
     }
@@ -430,28 +431,16 @@ void do_calc(){
                 }
                 auto endTime = std::chrono::high_resolution_clock::now();
                 double elap = std::chrono::duration<double>(endTime - startTime).count();
-                std::cout << "elapsed: " << elap/N*1e6 << " us/call" << std::endl;
+                std::cout << "elapsed to call p(rho): " << elap/N*1e6 << " us/call" << std::endl;
             }
-
-            /*auto startTime = std::chrono::high_resolution_clock::now();
-            auto pcheb = ChebTools::ChebyshevExpansion::factory(10, [&mix, T, &z](double x) {return mix.calc_p(x, T, z); }, 2000, max_rhomolar * 0.99);
-            auto interTime = std::chrono::high_resolution_clock::now();
-            auto roots = (pcheb - val).real_roots(true);
-            auto endTime = std::chrono::high_resolution_clock::now();
-    		double elap = std::chrono::duration<double>(endTime - startTime).count();
-            std::cout << "elapsed (build): " << std::chrono::duration<double>(interTime - startTime).count()*1e6 << " us" << std::endl; 
-            std::cout << "elapsed (total): " << elap*1e6 << " us" << std::endl;
-            std::cout << "roots:" << std::endl;
-            for (auto root: roots){
-                 std::cout << root << std::endl;
-            }*/
 
             auto tic = std::chrono::high_resolution_clock::now();
             double rootsum = 0.0;
             for (auto i = 0; i < 10; ++i) {
                 ChebyshevSAFT chebSAFT(mix);
-                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 100);
-                chebSAFT.get_psat();
+                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 1);
+                //chebSAFT.get_psat();
+                rootsum += chebSAFT.T();
             }
             std::cout << rootsum /10 << std::endl;
             auto toc = std::chrono::high_resolution_clock::now();
