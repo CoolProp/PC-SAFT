@@ -16,6 +16,11 @@ auto pow(const ChebTools::ChebyshevExpansion &ce, NType n){
     return ce.apply(f);
 }
 
+/// Raise an EigenArray to a power
+auto pow(const Eigen::ArrayXd& v, std::size_t n) {
+    return v.pow(static_cast<int>(n));
+}
+
 const static double k_Boltzmann = 1.380649e-23;
 const static double N_AV = 8.314462618/k_Boltzmann; 
 const static double PI = 3.141592654;
@@ -75,19 +80,20 @@ auto C2(const Eta &eta, Mbar mbar){
 }
 /// Eqn. A.18
 template<typename TYPE>
-auto a_i(std::size_t i, TYPE mbar){
-    static TYPE a_0[7] = { 0.9105631445, 0.6361281449, 2.6861347891, -26.547362491, 97.759208784, -159.59154087, 91.297774084 };
-    static TYPE a_1[7] = { -0.3084016918, 0.1860531159, -2.5030047259, 21.419793629, -65.255885330, 83.318680481, -33.746922930 };
-    static TYPE a_2[7] = { -0.0906148351, 0.4527842806, 0.5962700728, -1.7241829131, -4.1302112531, 13.776631870, -8.6728470368 };
-    return a_0[i]+(mbar-1.0)/mbar*a_1[i] + (mbar-1.0)/mbar*(mbar-2.0)/mbar*a_2[i];
+Eigen::ArrayXd get_a(TYPE mbar){
+    static Eigen::ArrayXd a_0 = (Eigen::ArrayXd(7) << 0.9105631445, 0.6361281449, 2.6861347891, -26.547362491, 97.759208784, -159.59154087, 91.297774084).finished();
+    static Eigen::ArrayXd a_1 = (Eigen::ArrayXd(7) <<  -0.3084016918, 0.1860531159, -2.5030047259, 21.419793629, -65.255885330, 83.318680481, -33.746922930).finished();
+    static Eigen::ArrayXd a_2 = (Eigen::ArrayXd(7) <<  -0.0906148351, 0.4527842806, 0.5962700728, -1.7241829131, -4.1302112531, 13.776631870, -8.6728470368).finished();
+    return a_0+(mbar-1.0)/mbar*a_1 + (mbar-1.0)/mbar*(mbar-2.0)/mbar*a_2;
 }
 /// Eqn. A.19
 template<typename TYPE>
-auto b_i(std::size_t i, TYPE mbar){
-    static TYPE b_0[7] = { 0.724094694, 2.2382791861, -4.0025849485, -21.003576815, 26.855641363, 206.55133841, -355.60235612 };
-    static TYPE b_1[7] = { -0.5755498075, 0.6995095521, 3.8925673390, -17.215471648, 192.67226447, -161.82646165, -165.20769346 };
-    static TYPE b_2[7] = { 0.0976883116, -0.2557574982, -9.1558561530, 20.642075974, -38.804430052, 93.626774077, -29.666905585 };
-    return b_0[i]+(mbar-1.0)/mbar*b_1[i] + (mbar-1.0)/mbar*(mbar-2.0)/mbar*b_2[i];
+Eigen::ArrayXd get_b(TYPE mbar){
+    // See https://stackoverflow.com/a/35170514/1360263
+    static Eigen::ArrayXd b_0 = (Eigen::ArrayXd(7) << 0.724094694, 2.2382791861, -4.0025849485, -21.003576815, 26.855641363, 206.55133841, -355.60235612).finished() ;
+    static Eigen::ArrayXd b_1 = (Eigen::ArrayXd(7) << -0.5755498075, 0.6995095521, 3.8925673390, -17.215471648, 192.67226447, -161.82646165, -165.20769346).finished() ;
+    static Eigen::ArrayXd b_2 = (Eigen::ArrayXd(7) << 0.0976883116, -0.2557574982, -9.1558561530, 20.642075974, -38.804430052, 93.626774077, -29.666905585).finished() ;
+    return b_0+(mbar-1.0)/mbar*b_1 + (mbar-1.0)/mbar*(mbar-2.0)/mbar*b_2;
 }
 /// Residual contribution from hard-sphere (Eqn. A.26)
 template<typename VecType>
@@ -114,43 +120,34 @@ auto gij_HS(const zVecType &zeta, const dVecType &d,
     return 1.0/(Upsilon) + d[i]*d[j]/(d[i]+d[j])*3.0*zeta[2]/pow(Upsilon, 2)
         + pow(d[i]*d[j]/(d[i]+d[j]), 2)*2.0*pow(zeta[2], 2)/pow(Upsilon, 3);
 }
-/// Eqn. A.16
+/// Eqn. A.16, Eqn. A.29
 template <typename Eta>
-auto I1(const Eta &eta, double mbar){
-    Eta summer = 0.0;
+auto get_I1(const Eta &eta, double mbar){
+    auto avec = get_a(mbar);
+    Eta summer_I1 = 0.0, summer_etadI1deta = 0.0;
     for (std::size_t i = 0; i < 7; ++i){
-        summer += a_i(i, mbar)*pow(eta, i);
+        auto increment = avec(i)*pow(eta, static_cast<int>(i));
+        summer_I1 += increment;
+        summer_etadI1deta += increment*(i+1.0);
     }
-    return summer;
+    return std::make_tuple(summer_I1, summer_etadI1deta);
 }
-/// Eqn. A.29
+/// Eqn. A.17, Eqn. A.30
 template <typename Eta>
-auto d_etaI1_deta(const Eta &eta, double mbar){
-    Eta summer = 0.0*eta;
-    for (std::size_t j = 0; j < 7; ++j){
-        summer += a_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
-    }
-    return summer;
-}
-/// Eqn. A.17
-template <typename Eta>
-auto I2(const Eta &eta, double mbar){
-    Eta summer = 0.0*eta;
+auto get_I2(const Eta &eta, double mbar){
+    auto bvec = get_b(mbar);
+    Eta summer_I2 = 0.0*eta, summer_etadI2deta = 0.0*eta;
     for (std::size_t i = 0; i < 7; ++i){
-        summer += b_i(i, mbar)*pow(eta, static_cast<int>(i));
+        auto increment = bvec(i) * pow(eta, static_cast<int>(i));
+        summer_I2 += increment;
+        summer_etadI2deta += increment*(i+1.0);
     }
-    return summer;
+    return std::make_tuple(summer_I2, summer_etadI2deta);
 }
-/// Eqn. A.30
-template <typename Eta>
-auto d_etaI2_deta(const Eta &eta, double mbar){
-    Eta summer = 0.0*eta;
-    for (std::size_t j = 0; j < 7; ++j){
-        summer += b_i(j, mbar)*(j+1.0)*pow(eta, static_cast<int>(j));
-    }
-    return summer;
-}
+
 PCSAFTLibrary library;
+
+
 /**
 Sum up two array-like objects that can each have different container types and value types
 */
@@ -264,17 +261,19 @@ public:
 
         /// Convert from molar density to number density in molecules/Angstrom^3
         auto rho_A3 = rhomolar*N_AV*1e-30; //[molecules (not moles)/A^3]
-        /// Packing fraction
-        auto eta = (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(c.d, 3));
-
+        
         /// Evaluate the components of zeta
-        std::vector<RhoType> zeta;
+        std::vector<RhoType> zeta(4);
         for (std::size_t n = 0; n < 4; ++n){
             // Eqn A.8
-            zeta.push_back(
-                (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(c.d, static_cast<double>(n)))
-            );
+            zeta[n] = (PI/6.0)*rho_A3*sumproduct(mole_fractions, m, powvec(c.d, static_cast<double>(n)));
         }
+
+        /// Packing fraction is the 4-th value in zeta
+        auto eta = zeta[3];
+
+        auto [I1, etadI1deta] = get_I1(eta, c.mbar);
+        auto [I2, etadI2deta] = get_I2(eta, c.mbar);
 
         RhoType summer = 0.0*rhomolar;
         for (std::size_t i = 0; i < N; ++i){
@@ -282,8 +281,8 @@ public:
         }
         auto Z_hs_ = Z_hs(zeta);
         auto Z_hc = c.mbar*Z_hs_ + summer;
-        auto Z_disp = -2*PI*rho_A3*d_etaI1_deta(eta, c.mbar)*c.m2_epsilon_sigma3_bar
-                      -PI*rho_A3*c.mbar*(C1(eta,c.mbar)*d_etaI2_deta(eta, c.mbar) + C2(eta,c.mbar)*eta*I2(eta, c.mbar))*c.m2_epsilon2_sigma3_bar;
+        auto Z_disp = -2*PI*rho_A3*etadI1deta*c.m2_epsilon_sigma3_bar
+                      -PI*rho_A3*c.mbar*(C1(eta,c.mbar)*etadI2deta + C2(eta,c.mbar)*eta*I2)*c.m2_epsilon2_sigma3_bar;
         auto Z = 1.0 + Z_hc + Z_disp; //[-]
         return Z;
     }
@@ -309,13 +308,23 @@ public:
     template<typename VecType>
     void make_pv_expansions(double T, const VecType& mole_fractions, double vmolarmin, double vmolarmax, int Ndegree, int Ndivisions) {
         auto factor = pow(vmolarmax / vmolarmin, 1.0/(Ndivisions-1.0));
+        
         for (auto idivision = 0; idivision < Ndivisions-1; ++idivision) {
-            auto xmin = vmolarmin * pow(factor, idivision), xmax = xmin*factor;
-            expansions.emplace_back(
-                ChebTools::ChebyshevExpansion::factory(Ndegree, 
-                    [this, T, &mole_fractions](double v) {return this->mix.calc_p(1/v, T, mole_fractions);}, 
-                    xmin, xmax)
+            auto xmin = vmolarmin * pow(factor, idivision), xmax = xmin * factor;
+
+            expansions.emplace_back(ChebTools::ChebyshevExpansion::factory(
+                Ndegree, 
+                [this, T, &mole_fractions](const double& v) {return this->mix.calc_p(1 / v, T, mole_fractions); }, 
+                xmin, xmax)
             );
+
+            //auto func = [this, T, &mole_fractions](const Eigen::ArrayXd& v) {return this->mix.calc_p(1 / v, T, mole_fractions); };
+            //auto x_nodes_n11 = ChebTools::get_CLnodes(Ndegree);
+            //Eigen::ArrayXd x_k = ((xmax - xmin) * x_nodes_n11.array() + (xmax + xmin)) / 2.0;
+            //Eigen::ArrayXd f = func(x_k);
+
+            // Build expansion from nodal values in one fell swoop
+            //expansions.emplace_back( ChebTools::ChebyshevExpansion::factoryf(Ndegree, f, xmin, xmax) );
         }
         for (auto& expansion : expansions) {
             derivatives.emplace_back(expansion.deriv(1));
@@ -381,13 +390,13 @@ public:
         auto [vroots, vals] = get_extrema();
         auto pmax = *std::max_element(vals.begin(), vals.end());
         if (vals.size() == 2) {
-            for (auto pval = 2040600.6290362066; pval > 0.5e6; pval /= 1.01) {
+            for (auto pval = pmax; pval > 0.5e6; pval /= 1.01) {
                 auto volumeroots = get_pv_roots(pval);
                 if (volumeroots.size() == 2) {
                     auto rho0 = 1/volumeroots[0], rho1 = 1/volumeroots[1];
                     auto pdeltaV = (volumeroots[1] - volumeroots[0])*pval; // must be positive
                     auto maxwell = get_Maxwell_condition(volumeroots[0], volumeroots[1]) - pdeltaV;
-                    std::cout << pval << " :p,maxwell: " << maxwell << std::endl;
+                    std::cout << pval << " :p,maxwell: " << maxwell << "," << rho0 << "," <<  rho1 << std::endl;
                 }
             }
         }
@@ -436,15 +445,16 @@ void do_calc(){
 
             auto tic = std::chrono::high_resolution_clock::now();
             double rootsum = 0.0;
+            auto N = 100;
             for (auto i = 0; i < 10; ++i) {
                 ChebyshevSAFT chebSAFT(mix);
-                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 1);
-                //chebSAFT.get_psat();
+                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 100);
+                chebSAFT.get_psat();
                 rootsum += chebSAFT.T();
             }
             std::cout << rootsum /10 << std::endl;
             auto toc = std::chrono::high_resolution_clock::now();
-            double elapp = std::chrono::duration<double>(toc - tic).count()/10.0;
+            double elapp = std::chrono::duration<double>(toc - tic).count()/N;
             std::cout << "elapsed (total): " << elapp * 1e6 << " us" << std::endl;
         }
     }
