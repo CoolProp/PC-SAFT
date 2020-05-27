@@ -390,15 +390,18 @@ public:
         auto [vroots, vals] = get_extrema();
         auto pmax = *std::max_element(vals.begin(), vals.end());
         if (vals.size() == 2) {
-            for (auto pval = pmax; pval > 0.5e6; pval /= 1.01) {
+            auto presid = [this](double lnpval) -> double {
+                auto pval = exp(lnpval);
                 auto volumeroots = get_pv_roots(pval);
-                if (volumeroots.size() == 2) {
-                    auto rho0 = 1/volumeroots[0], rho1 = 1/volumeroots[1];
-                    auto pdeltaV = (volumeroots[1] - volumeroots[0])*pval; // must be positive
-                    auto maxwell = get_Maxwell_condition(volumeroots[0], volumeroots[1]) - pdeltaV;
-                    std::cout << pval << " :p,maxwell: " << maxwell << "," << rho0 << "," <<  rho1 << std::endl;
-                }
-            }
+                auto rho0 = 1 / volumeroots[0], rho1 = 1 / volumeroots[1];
+                auto pdeltaV = (volumeroots[1] - volumeroots[0]) * pval; // must be positive
+                auto maxwell = get_Maxwell_condition(volumeroots[0], volumeroots[1]) - pdeltaV;
+                return maxwell;
+            };
+            auto ce = ChebTools::ChebyshevExpansion::factory(20, presid, log(1e-6), log(pmax*0.999));
+            auto lnproots = ce.real_roots(true);
+            auto p = exp(lnproots[0]);
+            return p;
         }
         else {
             throw std::invalid_argument("");
@@ -413,7 +416,7 @@ void do_calc(){
         std::vector<double> z = {1.0};
         PCSAFTMixture mix(names);
         mix.print_info();
-        double T = 150;
+        double T = 100;
         auto max_rhoN = mix.max_rhoN(T, z)*1e30; // [molecule/m^3]
         auto max_rhomolar = max_rhoN/N_AV;
         std::cout << "max rhomolar: " << max_rhomolar << std::endl; 
@@ -446,16 +449,14 @@ void do_calc(){
             auto tic = std::chrono::high_resolution_clock::now();
             double rootsum = 0.0;
             auto N = 100;
-            for (auto i = 0; i < 10; ++i) {
+            for (auto i = 0; i < N; ++i) {
                 ChebyshevSAFT chebSAFT(mix);
-                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-10, 8, 100);
-                chebSAFT.get_psat();
-                rootsum += chebSAFT.T();
+                chebSAFT.make_pv_expansions(T, z, 1/(0.9*max_rhomolar), 1/1e-14, 8, 100);
+                rootsum += chebSAFT.get_psat();
             }
-            std::cout << rootsum /10 << std::endl;
             auto toc = std::chrono::high_resolution_clock::now();
             double elapp = std::chrono::duration<double>(toc - tic).count()/N;
-            std::cout << "elapsed (total): " << elapp * 1e6 << " us" << std::endl;
+            std::cout << "elapsed (total): " << elapp * 1e6 << " us; result: " <<  rootsum/N << std::endl;
         }
     }
 }
